@@ -1,0 +1,7 @@
+# ------------------------------------------
+# common
+#
+$NS 600 asnlookup-ns1.zonemaster.net asnlookup-ns2.zonemaster.net 
+$SOA 600 asnlookup-ns1.zonemaster.net nomail.asnlookup-mail.zonemaster.net 0 1800 900 86400 900
+$TTL 14400
+# ------------------------------------------

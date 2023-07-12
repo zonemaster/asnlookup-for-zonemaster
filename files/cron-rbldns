@@ -1,0 +1,2 @@
+# Update asnlookup database
+30 */6 * * * root cd /var/lib/rbldns/script/fetch.pl
