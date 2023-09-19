@@ -128,7 +128,7 @@ convertsource()
 {
     # Convert the fetched soruce file to a meta format
 
-    local scipterror newfile
+    local scriptmessage newfile
 
     newfile="$datadir/$sourcefile"
 
@@ -137,12 +137,17 @@ convertsource()
 	mv $metafile $metafile.1
     fi
     
-    scripterror=$( cat $newfile | $convertscript 2>&1 > $metafile)
+    scriptmessage=$( cat $newfile | $convertscript 2>&1 > $metafile)
 
     # If there was an error, send a log message and terminate
-    if [ -n "$scripterror" ] ; then
-	logmessage ERROR "$scripterror"
+    if [ $? -ne 0 ] ; then
+	logmessage ERROR "$scriptmessage"
 	return 1
+    fi
+
+    # Log the message from script as a warning
+    if [ -n "$scriptmessage" ] ; then
+	logmessage WARNING "$scriptmessage"
     fi
 
     if ! [ -s $metafile ]; then
