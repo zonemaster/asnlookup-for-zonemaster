@@ -22,7 +22,7 @@ The TXT record RDATA consists of five sub fields separated by " | ", of which
 only the first two are used for data for Zonemaster. The remaining three
 must have the string "NA" to mean "not applicable". The second subfield is the
 prefix that the IP address in question belongs. The first subfield is the ASN
-or set of ASN the prefix is announced in.
+or set of ASNs the prefix is announced in. Multiple ASNs are space separated.
 
 =head1 INPUT DATA
 
@@ -37,20 +37,20 @@ Prefix is an IPv4 prefix or an IPv6 prefix.
 The IPv4 prefix is in the usual IPv4 display format (four dot-separated octets)
 plus "/" plus a prefix length 0-32 bits.
 
-The IPv6 prefix is in the usual IPv6 display format plus a prefix lenght 0-64
+The IPv6 prefix is in the usual IPv6 display format plus a prefix length 0-64
 bits
 
 Space is an ASCII x2D space character.
 
-ASN is a single ASN code.
+ASN is a single ASN code. If the prefix is annouced in multiple ASNs then there
+are multiple entries for the prefix.
 
 =head1 OUTPUT DATA
 
 This script will create a meta file on standard output. In the meta file every
-line is prepended with "IPV4"+<TAB> or "IPV6"+<TAB>. Two data files, for IPv4
-and IPv6, respectively, can be created from the meta file, one for IPv4 and one
-for IPv6 with the following commands assuing that the name of the metafile is
-"asndata.txt":
+line is prepended by "IPV4"+<TAB> or "IPV6"+<TAB>. Two data files, for IPv4
+and IPv6, respectively, can be created from the meta file with the following
+commands assuing that the name of the metafile is "asndata.txt":
 
 grep "^IPV4" asndata.txt | cut -f2- > ipv4data.txt
 grep "^IPV6" asndata.txt | cut -f2- > ipv6data.txt
@@ -66,6 +66,7 @@ returned to the calling code.
 
 =cut
 
+# Headers of the files
 say 'IPV6' . "\t" . '# ------------------------------------------';
 say 'IPV6' . "\t" . '$DATASET dnset origin6';
 say 'IPV6' . "\t" . '$TTL 14400';
@@ -81,6 +82,7 @@ my ($linecnt) = 0; # Line counter
 my ($ignorev4cnt) = 0; # Counting ignored IPv4 lines with prefix /25-32
 my ($ignorev6cnt) = 0; # Counting ignored IPv6 lines with prefix /65-128
 
+# Hashed temporarily store data in
 my (%ipv4data, %ipv6data);
 
 # Collect data from the data file and store by prefix
@@ -90,13 +92,13 @@ while (<>) {
 
     chomp;
 
-    my ($ip, $prefix, $asn);
+    my ($ip, $prefix, $asn, $rev);
 
     if (m!^([0-9a-f]+[0-9a-f:]+)/([0-9]+) +([0-9]+) *$!) {
 	# IPv6 prefix plus ASN
 
 	$ip = $1;      # IP address part
-	$prefix = $2;  # Prefix lenght
+	$prefix = $2;  # Prefix length
 	$asn = $3;     # ASN code
 
 	# Sanitary tests
@@ -115,7 +117,7 @@ while (<>) {
     } elsif (m!^(\d+\.\d+\.\d+\.\d+)/([0-9]+) +([0-9]+) *$!) {
 
 	$ip = $1;      # IP address part
-	$prefix = $2;  # Prefix lenght
+	$prefix = $2;  # Prefix length
 	$asn = $3;     # ASN code
 
 	# Sanitary tests
@@ -141,16 +143,14 @@ while (<>) {
     }
 }
 
-# Create zone file data for IPv6 data
+# Create zone file data from IPv6 data
 foreach my $fullprefix ( keys %ipv6data ) {
 
     my ($rev, $lenfulldigit, $subrev, $remainder);
     my ($ip, $prefix) = split ('/', $fullprefix);
-    my ($asn) = join ( ' ', @{ $ipv6data{ $fullprefix } } );
         
     # Create a reverse name from address
     $rev = Net::IP::ip_reverse ($ip);
-    die qq(ERROR on line $linecnt in input data: Reverse failed on "$ip") unless $rev;
     $rev =~ s/\.ip6\.arpa\.?$//; # remove ".ip.arpa." from reverse name
 
     # Every digit in the IP address covers 4 bits. Find the number digits, with the
@@ -162,11 +162,13 @@ foreach my $fullprefix ( keys %ipv6data ) {
     $subrev = substr $rev, -$lenfulldigit;
     $remainder = $prefix % 4;
 
+    my $rdata = &create_rdata( $ipv6data{ $fullprefix }, $fullprefix);
+    
     # Prefix with "IPV6\t". Print TXT information for following reverses
-    say "IPV6\t:127.0.0.2:$asn | $ip/$prefix | NA | NA | NA";
+    say "IPV6\t:127.0.0.2:$rdata";
     
     if ($remainder == 0) {
-        # Prefix lenght was 0, 4, 8...
+        # Prefix length was 0, 4, 8...
         say "IPV6\t$subrev";
         
     } else {
@@ -180,7 +182,7 @@ foreach my $fullprefix ( keys %ipv6data ) {
 
         for (my $i = 0; $i <= $addon; $i++) {
             my $add = $nextdigit + $i;
-            die qq(ERROR on line $linecnt in input data: Calculated digit "$add" is greater than 15") if $add > 15;
+            die qq(ERROR: Calculated digit "$add" is greater than 15") if $add > 15;
             say 'IPV6' . "\t" . '.' . sprintf ("%x", $add) . $subrev;
         }
     }
@@ -190,9 +192,9 @@ foreach my $fullprefix ( keys %ipv6data ) {
 foreach my $fullprefix ( keys %ipv4data ) {
 
     my ($ip, $prefix) = split ('/', $fullprefix);
-    my ($asn) = join ( ' ', @{ $ipv4data{ $fullprefix } } );
-
-    say "IPV4\t$ip/$prefix:127.0.0.2:$asn | $ip/$prefix | NA | NA | NA";
+    my $rdata = &create_rdata( $ipv4data{ $fullprefix }, $fullprefix);
+    
+    say "IPV4\t$ip/$prefix:127.0.0.2:$rdata"
 }
 
 
@@ -205,3 +207,27 @@ if ($ignorev4cnt > 0 and $ignorev6cnt > 0) {
     warn qq($ignorev6cnt lines with IPv6 prefix /65-128) . "\n";
 }
 
+
+sub create_rdata {
+    my ($aref_asn, $fullprefix) = @_;
+    
+    my $rdata_suffix = "| $fullprefix | NA | NA | NA"; # To put after the list of ASNs.
+    my $rdata_maxlength = 250; # Should be 255, but it gives some margin. Only rare cases reach the limit.
+  
+    # Sort the ASNs to be able to prioritize those with low number in case there are
+    # too many to include all. And give consisten output.
+    my (@asn) = sort {$a <=> $b} @{ $aref_asn };
+
+    # Create a string of ASNs up to the limit (RDATA not exeeding $rdata_maxlength bytes)
+    my $asnstr = '';
+    foreach my $a (@asn) {
+        # Include length of one white space
+        if ( length($asnstr) + length($a) + 1 + length($rdata_suffix) > $rdata_maxlength ) {
+            last;
+        } else {
+            $asnstr .= "$a ";
+        }
+    }
+
+    return "${asnstr}${rdata_suffix}";    
+}
