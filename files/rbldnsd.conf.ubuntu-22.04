@@ -1,0 +1,1 @@
+RBLDNSD="- -p /var/run/rbldnsd.pid -r /var/lib/rbldns -c60m -s stats/rbldns.stats -b #ASNLOOKUPSERVER#/53 -b localhost/53 asnlookup.zonemaster.net:combined:zones/common.txt,zones/ipv4data.txt,zones/ipv6data.txt"
